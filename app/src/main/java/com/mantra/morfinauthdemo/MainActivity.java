@@ -521,15 +521,31 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                 isStartCaptureRunning = false;
 
                 runOnUiThread(() -> {
-                    if (errorCode == -2057) {
-                        txtStatus.setText("Status : Device not connected");
-                    } else {
-                        txtStatus.setText(
-                                "Status : CAPTURE FAILED (" + errorCode + ")\n" +
-                                        morfinAuth.GetErrorMessage(errorCode)
-                        );
-                    }
-                    finishCaptureSession();
+
+                    String errorMsg = String.format(
+                            " ERROR CODE: %d\n\n" +
+                                    "Message: %s\n\n" +
+                                    "Quality: %d\nNFIQ: %d",
+                            errorCode,
+                            morfinAuth.GetErrorMessage(errorCode),
+                            Quality,
+                            NFIQ
+                    );
+                    txtStatus.setText(errorMsg);
+
+
+//                    if (errorCode == -2057) {
+//                        txtStatus.setText("Status : Device not connected");
+//                    } else {
+//                        txtStatus.setText(
+//                                "Status : CAPTURE FAILED (" + errorCode + ")\n" +
+//                                        morfinAuth.GetErrorMessage(errorCode)
+//                        );
+//                    }
+//                    finishCaptureSession();
+
+                    btnStartCapture.setEnabled(true);
+                    btnStopCapture.setEnabled(false);
                 });
             }
         } catch (Exception e) {
