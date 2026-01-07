@@ -504,11 +504,28 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                     );
                     txtStatus.setText(status);
 
-
                     if (captureCount >= MAX_FINGERS) {
                         isStartCaptureRunning = false;
                         finishCaptureSession();
                     } else if (!stopCaptureRequested) {
+                        restartCaptureForNextFinger();
+                    } else {
+                        isStartCaptureRunning = false;
+                        finishCaptureSession();
+                    }
+                });
+
+            } else if (errorCode == -2019) {
+
+                runOnUiThread(() -> {
+                    if (!stopCaptureRequested && captureCount < MAX_FINGERS) {
+                        txtStatus.setText(
+                                String.format(
+                                        "Status : Timeout waiting for finger\nRetrying FINGER %d/10\nPlace your finger...",
+                                        captureCount + 1
+                                )
+                        );
+
                         restartCaptureForNextFinger();
                     } else {
                         isStartCaptureRunning = false;
@@ -521,31 +538,19 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                 isStartCaptureRunning = false;
 
                 runOnUiThread(() -> {
-
-                    String errorMsg = String.format(
-                            " ERROR CODE: %d\n\n" +
-                                    "Message: %s\n\n" +
-                                    "Quality: %d\nNFIQ: %d",
-                            errorCode,
-                            morfinAuth.GetErrorMessage(errorCode),
-                            Quality,
-                            NFIQ
-                    );
-                    txtStatus.setText(errorMsg);
-
-
-//                    if (errorCode == -2057) {
-//                        txtStatus.setText("Status : Device not connected");
-//                    } else {
-//                        txtStatus.setText(
-//                                "Status : CAPTURE FAILED (" + errorCode + ")\n" +
-//                                        morfinAuth.GetErrorMessage(errorCode)
-//                        );
-//                    }
-//                    finishCaptureSession();
-
-                    btnStartCapture.setEnabled(true);
-                    btnStopCapture.setEnabled(false);
+                    if (errorCode == -2057) {
+                        txtStatus.setText("Status : Device not connected");
+                    } else {
+                        txtStatus.setText(
+                                String.format(
+                                        "Status : CAPTURE FAILED (%d)\n%s\nCaptured %d/10 fingers",
+                                        errorCode,
+                                        morfinAuth.GetErrorMessage(errorCode),
+                                        captureCount
+                                )
+                        );
+                    }
+                    finishCaptureSession();
                 });
             }
         } catch (Exception e) {
@@ -557,6 +562,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             });
         }
     }
+
 
     private void restartCaptureForNextFinger() {
         try {
