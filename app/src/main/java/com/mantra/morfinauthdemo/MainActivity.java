@@ -43,6 +43,16 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
     private int minQuality = 60;
     private int timeOut = 10000;
 
+    private int captureCount = 0;
+    private static final int MAX_FINGERS = 10;
+    private boolean isContinuousCaptureMode = false;
+    private boolean stopCaptureRequested = false;
+
+
+    private volatile boolean shouldContinueCapture = true;
+
+
+
 
 
     @Override
@@ -205,14 +215,16 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             }
 
 
-            imgFinger.setImageResource(android.R.color.white);
+            captureCount = 0;
+            stopCaptureRequested = false;
 
-            txtStatus.setText("Status : Starting capture...\nPlace your finger on sensor");
+            imgFinger.setImageResource(android.R.color.white);
+            txtStatus.setText("Status : FINGER 1/10\nPlace your finger on sensor");
             btnStartCapture.setEnabled(false);
+            btnStopCapture.setEnabled(true);
             isStartCaptureRunning = true;
 
             try {
-
                 int ret = morfinAuth.StartCapture(minQuality, timeOut);
 
                 if (ret != 0) {
@@ -223,11 +235,8 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                             "Status : START CAPTURE FAILED (" + ret + ")\n" +
                                     morfinAuth.GetErrorMessage(ret)
                     );
-                } else {
-
-                    txtStatus.setText("Status : Capture running...\nWaiting for fingerprint");
-                    btnStopCapture.setEnabled(true);
                 }
+
             } catch (Exception e) {
                 e.printStackTrace();
                 isStartCaptureRunning = false;
@@ -238,6 +247,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         });
     }
 
+
     private void setupStopCaptureClick() {
         btnStopCapture.setOnClickListener(v -> {
             if (isStopCaptureRunning) {
@@ -245,26 +255,31 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                 return;
             }
 
+            stopCaptureRequested = true;
+
             txtStatus.setText("Status : Stopping capture...");
             btnStopCapture.setEnabled(false);
             isStopCaptureRunning = true;
 
             new Thread(() -> {
                 try {
-
                     int ret = morfinAuth.StopCapture();
-                    isStartCaptureRunning = false;
 
                     runOnUiThread(() -> {
                         if (ret == 0) {
-                            txtStatus.setText("Status : Capture stopped successfully");
-                            btnStartCapture.setEnabled(true);
+                            String message = String.format(
+                                    "Status : Manually stopped\nCaptured %d/10 fingers",
+                                    captureCount
+                            );
+                            txtStatus.setText(message);
+                            finishCaptureSession();
                         } else {
                             txtStatus.setText(
                                     "Status : STOP CAPTURE FAILED (" + ret + ")\n" +
                                             morfinAuth.GetErrorMessage(ret)
                             );
                             btnStopCapture.setEnabled(true);
+                            stopCaptureRequested = false;
                         }
                         isStopCaptureRunning = false;
                     });
@@ -273,12 +288,14 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                     runOnUiThread(() -> {
                         txtStatus.setText("Status : Error stopping capture\n" + e.getMessage());
                         btnStopCapture.setEnabled(true);
+                        stopCaptureRequested = false;
                         isStopCaptureRunning = false;
                     });
                 }
             }).start();
         });
     }
+
 
 
     private void setupSyncCaptureClick() {
@@ -474,22 +491,34 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
     @Override
     public void OnComplete(int errorCode, int Quality, int NFIQ) {
         try {
-            isStartCaptureRunning = false;
-
             if (errorCode == 0) {
 
+                captureCount++;
+
                 runOnUiThread(() -> {
-                    txtStatus.setText(
-                            "Status : CAPTURE SUCCESS\n" +
-                                    "Quality: " + Quality + "\n" +
-                                    "NFIQ: " + NFIQ
+                    String status = String.format(
+                            "Status : FINGER %d/10 SUCCESS\nQuality: %d\nNFIQ: %d",
+                            captureCount,
+                            Quality,
+                            NFIQ
                     );
-                    btnStartCapture.setEnabled(true);
-                    btnStopCapture.setEnabled(false);
+                    txtStatus.setText(status);
+
+
+                    if (captureCount >= MAX_FINGERS) {
+                        isStartCaptureRunning = false;
+                        finishCaptureSession();
+                    } else if (!stopCaptureRequested) {
+                        restartCaptureForNextFinger();
+                    } else {
+                        isStartCaptureRunning = false;
+                        finishCaptureSession();
+                    }
                 });
 
-
             } else {
+
+                isStartCaptureRunning = false;
 
                 runOnUiThread(() -> {
                     if (errorCode == -2057) {
@@ -500,19 +529,75 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                                         morfinAuth.GetErrorMessage(errorCode)
                         );
                     }
-                    btnStartCapture.setEnabled(true);
-                    btnStopCapture.setEnabled(false);
+                    finishCaptureSession();
                 });
             }
         } catch (Exception e) {
             e.printStackTrace();
+            isStartCaptureRunning = false;
             runOnUiThread(() -> {
                 txtStatus.setText("Status : Error in OnComplete\n" + e.getMessage());
-                btnStartCapture.setEnabled(true);
-                btnStopCapture.setEnabled(false);
+                finishCaptureSession();
             });
         }
     }
+
+    private void restartCaptureForNextFinger() {
+        try {
+
+            imgFinger.setImageResource(android.R.color.white);
+
+
+            txtStatus.setText(
+                    String.format(
+                            "Status : FINGER %d/10\nPlace your finger on sensor",
+                            captureCount + 1
+                    )
+            );
+
+            int ret = morfinAuth.StartCapture(minQuality, timeOut);
+
+            if (ret != 0) {
+                isStartCaptureRunning = false;
+                txtStatus.setText(
+                        "Status : START CAPTURE FAILED (" + ret + ")\n" +
+                                morfinAuth.GetErrorMessage(ret)
+                );
+                finishCaptureSession();
+            } else {
+
+                isStartCaptureRunning = true;
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            isStartCaptureRunning = false;
+            txtStatus.setText("Status : Error restarting capture\n" + e.getMessage());
+            finishCaptureSession();
+        }
+    }
+
+
+
+
+
+
+    private void finishCaptureSession() {
+        isStartCaptureRunning = false;
+        stopCaptureRequested = false;
+
+        btnStartCapture.setEnabled(true);
+        btnStopCapture.setEnabled(false);
+
+        String finalMessage = String.format(
+                "Status : Capture Complete\nTotal fingers: %d/10",
+                captureCount
+        );
+        txtStatus.setText(finalMessage);
+
+        Log.d("CaptureSession", "Finished. Captured " + captureCount + " fingers");
+    }
+
 
 
     @Override
