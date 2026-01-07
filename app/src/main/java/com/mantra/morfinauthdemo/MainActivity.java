@@ -18,7 +18,14 @@ import com.mantra.morfinauth.DeviceInfo;
 import com.mantra.morfinauth.MorfinAuth_Callback;
 import com.mantra.morfinauth.enums.DeviceDetection;
 import com.mantra.morfinauth.enums.DeviceModel;
+import com.mantra.morfinauth.enums.ImageFormat;
 import com.mantra.morfinauth.enums.LogLevel;
+
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements MorfinAuth_Callback {
 
@@ -50,6 +57,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
 
     private boolean isAutoCaptureMode = false;
 
+    private List<byte[]> capturedImages;
 
 
 
@@ -60,6 +68,10 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
+
+
+        capturedImages = new ArrayList<>();
+
 
         txtStatus = findViewById(R.id.txtStatus);
         btnInit = findViewById(R.id.btnInit);
@@ -219,6 +231,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             captureCount = 0;
             stopCaptureRequested = false;
             isAutoCaptureMode = false;
+            capturedImages.clear();
 
             imgFinger.setImageResource(android.R.color.white);
             txtStatus.setText("Status : FINGER 1/10\nPlace your finger on sensor");
@@ -330,7 +343,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             txtStatus.setText("Status : Starting AutoCapture...\nPlace your finger on sensor");
             btnSyncCapture.setEnabled(false);
             btnStartCapture.setEnabled(false);
-            // btnStopCapture.setEnabled(false);
+
             btnStopCapture.setEnabled(true);
             isStartCaptureRunning = true;
 
@@ -588,6 +601,8 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
 
                 captureCount++;
 
+                getAndStoreImageData(captureCount, Quality);
+
                 runOnUiThread(() -> {
                     String status = String.format(
                             "Status : FINGER %d/10 SUCCESS\nQuality: %d\nNFIQ: %d",
@@ -714,9 +729,148 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             txtStatus.setText(finalMessage);
         }
 
+        if (captureCount > 0) {
+            showSaveDialog();
+        }
+
         Log.d("CaptureSession", "Finished. Captured " + captureCount + " fingers");
     }
 
+    private void showSaveDialog() {
+
+        androidx.appcompat.app.AlertDialog.Builder builder =
+                new androidx.appcompat.app.AlertDialog.Builder(MainActivity.this);
+
+
+        builder.setTitle("Save Images?")
+                .setMessage("Save " + captureCount + " fingerprint images?")
+
+
+                .setPositiveButton("SAVE", (dialog, id) -> {
+                    saveImagesToStorage();
+                })
+
+
+                .setNegativeButton("DISCARD", (dialog, id) -> {
+                    capturedImages.clear();
+                    txtStatus.setText("Status : Images discarded");
+                })
+
+                .setCancelable(false)
+                .show();
+    }
+
+
+    private void getAndStoreImageData(int fingerNumber, int quality) {
+
+
+        int size = lastDeviceInfo.Width * lastDeviceInfo.Height + 1111;
+        int[] iSize = new int[1];
+        byte[] bImage1 = new byte[size];
+
+
+        int ret = morfinAuth.GetImage(bImage1, iSize, 1, ImageFormat.BMP);
+
+
+        if (ret == 0) {
+
+            byte[] bImage = new byte[iSize[0]];
+
+
+            System.arraycopy(bImage1, 0, bImage, 0, iSize[0]);
+
+
+            capturedImages.add(bImage);
+
+            Log.d("ImageCapture", "Stored finger " + fingerNumber + " - " + iSize[0] + " bytes");
+        } else {
+            Log.e("ImageCapture", "GetImage failed: " + ret);
+        }
+    }
+
+
+    private void saveImagesToStorage() {
+
+
+        if (capturedImages.isEmpty()) {
+            txtStatus.setText("Status : No images to save");
+            return;
+        }
+
+
+        new Thread(() -> {
+            try {
+
+                String timestamp = new java.text.SimpleDateFormat(
+                        "yyyyMMdd_HHmmss",
+                        java.util.Locale.US
+                ).format(new java.util.Date());
+
+
+
+                File storageDir = getExternalMediaDirs()[0];
+                if (storageDir == null) {
+                    storageDir = getExternalFilesDir(null);
+                }
+
+
+                String folderPath = storageDir.getAbsolutePath() +
+                        File.separator + "FingerData" +
+                        File.separator + timestamp;
+
+
+                File folder = new File(folderPath);
+                if (!folder.exists()) {
+                    folder.mkdirs();
+                }
+
+
+                int savedCount = 0;
+                for (int i = 0; i < capturedImages.size(); i++) {
+                    byte[] imageData = capturedImages.get(i);
+
+
+                    if (imageData != null && imageData.length > 0) {
+
+
+                        String fileName = "finger_" + (i + 1) + ".jpg";
+
+
+                        String filePath = folderPath + File.separator + fileName;
+
+                        FileOutputStream fos = new FileOutputStream(filePath);
+                        fos.write(imageData);
+                        fos.close();
+
+                        savedCount++;
+                    }
+                }
+
+
+                String message = String.format(
+                        "Status : SAVED ✓\nImages: %d\nLocation:\n%s",
+                        savedCount,
+                        folderPath
+                );
+
+
+                runOnUiThread(() -> {
+                    txtStatus.setText(message);
+                });
+
+                Log.i("SaveSession", "Saved " + savedCount + " images");
+
+            } catch (Exception e) {
+                Log.e("SaveSession", "Error", e);
+                runOnUiThread(() -> {
+                    txtStatus.setText("Status : Save failed");
+                });
+            } finally {
+
+                capturedImages.clear();
+            }
+        }).start();
+    }
 
 
 
