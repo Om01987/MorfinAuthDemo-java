@@ -338,6 +338,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             captureCount = 0;
             stopCaptureRequested = false;
             isAutoCaptureMode = true;
+            capturedImages.clear();
 
             imgFinger.setImageResource(android.R.color.white);
             txtStatus.setText("Status : Starting AutoCapture...\nPlace your finger on sensor");
@@ -361,6 +362,9 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                         runOnUiThread(() -> {
                             if (ret == 0) {
                                 captureCount++;
+                                getAndStoreImageData(captureCount, qty[0]);
+
+
 
                                 if (captureCount < MAX_FINGERS) {
                                     txtStatus.setText(
@@ -474,6 +478,11 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             );
             txtStatus.setText(finalMessage);
         }
+
+        if (captureCount > 0) {
+            showSaveDialog();
+        }
+
 
         Log.d("AutoCaptureSession", "Finished. Captured " + captureCount + " fingers");
     }
