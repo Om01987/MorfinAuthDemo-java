@@ -1,5 +1,6 @@
 package com.mantra.morfinauthdemo;
 
+import android.database.Cursor;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
@@ -22,6 +23,8 @@ import com.mantra.morfinauth.enums.LogLevel;
 
 import java.io.File;
 import java.io.FileOutputStream;
+
+
 
 public class MainActivity extends AppCompatActivity implements MorfinAuth_Callback {
 
@@ -53,6 +56,18 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
 
     private String currentSessionFolder;
 
+    private enum ScannerAction {
+        ENROLL,
+        MATCH
+    }
+
+    private ScannerAction currentAction = ScannerAction.ENROLL;
+
+    private FingerprintDatabaseHelper dbHelper;
+    private String enrollmentUserId = "";
+    private byte[] lastCapturedTemplate = null;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -80,6 +95,9 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         morfinAuth = new MorfinAuth(this, this);
         String logPath = getExternalFilesDir(null).toString();
         morfinAuth.SetLogProperties(logPath, LogLevel.DEBUG);
+
+        dbHelper = new FingerprintDatabaseHelper(this);
+        Log.d("MainActivity", "Database initialized");
 
         txtStatus.setText(R.string.status_disconnected);
 
@@ -191,6 +209,19 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             }).start();
         });
     }
+
+
+    private String generateAutoUserId() {
+        int count = dbHelper.getUserCount();
+        return String.format("USER_%03d", count + 1);
+    }
+
+
+    private String getUserNameFromId(String userId) {
+        return dbHelper.getUserNameById(userId);
+    }
+
+
 
     private void setupStartCaptureClick() {
         btnStartCapture.setOnClickListener(v -> {
@@ -461,7 +492,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         } else {
             String finalMessage = String.format(
                     "Status : AutoCapture Complete\n" +
-                            "✓ Saved %d/10 images\n" +
+                            " Saved %d/10 images\n" +
                             "Location:\n%s",
                     captureCount,
                     currentSessionFolder
@@ -485,7 +516,6 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
 
                 File[] dirs = getExternalMediaDirs();
-
 
 
                 storageDir = (dirs != null && dirs.length > 0) ? dirs[0] : null;
