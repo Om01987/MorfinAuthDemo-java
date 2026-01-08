@@ -61,11 +61,12 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         MATCH
     }
 
-    private ScannerAction currentAction = ScannerAction.ENROLL;
+    // private String enrollmentUserId = "";
 
+    private ScannerAction currentAction = ScannerAction.ENROLL;
     private FingerprintDatabaseHelper dbHelper;
-    private String enrollmentUserId = "";
     private byte[] lastCapturedTemplate = null;
+    private byte[] lastCapturedImage = null;
 
 
     @Override
@@ -96,8 +97,9 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         String logPath = getExternalFilesDir(null).toString();
         morfinAuth.SetLogProperties(logPath, LogLevel.DEBUG);
 
+
         dbHelper = new FingerprintDatabaseHelper(this);
-        Log.d("MainActivity", "Database initialized");
+        Log.d("MainActivity", " Database initialized");
 
         txtStatus.setText(R.string.status_disconnected);
 
@@ -211,15 +213,15 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
     }
 
 
-    private String generateAutoUserId() {
-        int count = dbHelper.getUserCount();
-        return String.format("USER_%03d", count + 1);
-    }
+//    private String generateAutoUserId() {
+//        int count = dbHelper.getUserCount();
+//        return String.format("USER_%03d", count + 1);
+//    }
 
 
-    private String getUserNameFromId(String userId) {
-        return dbHelper.getUserNameById(userId);
-    }
+//    private String getUserNameFromId(String userId) {
+//        return dbHelper.getUserNameById(userId);
+//    }
 
 
 
