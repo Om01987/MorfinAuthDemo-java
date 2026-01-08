@@ -788,9 +788,6 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
     }
 
 
-
-
-
     private void setDeviceInfo(DeviceInfo info) {
         runOnUiThread(() -> {
             try {
@@ -977,6 +974,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             });
         }
     }
+
 
     private void restartCaptureForNextFinger() {
         try {

@@ -41,7 +41,7 @@ public class FingerprintDatabaseHelper extends SQLiteOpenHelper {
                 COL_CREATED_AT + " DATETIME DEFAULT CURRENT_TIMESTAMP)";
 
         db.execSQL(createTable);
-        Log.d("DB", "✓ Fingerprints table created");
+        Log.d("DB", " Fingerprints table created");
     }
 
     @Override
