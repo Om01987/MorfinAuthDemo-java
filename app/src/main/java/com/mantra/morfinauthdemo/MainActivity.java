@@ -20,6 +20,7 @@ import com.mantra.morfinauth.enums.DeviceDetection;
 import com.mantra.morfinauth.enums.DeviceModel;
 import com.mantra.morfinauth.enums.ImageFormat;
 import com.mantra.morfinauth.enums.LogLevel;
+import com.mantra.morfinauth.enums.TemplateFormat;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -61,7 +62,6 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         MATCH
     }
 
-    // private String enrollmentUserId = "";
 
     private ScannerAction currentAction = ScannerAction.ENROLL;
     private FingerprintDatabaseHelper dbHelper;
@@ -82,6 +82,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         btnStopCapture = findViewById(R.id.btnStopCapture);
         imgFinger = findViewById(R.id.imgFinger);
         btnSyncCapture = findViewById(R.id.btnSyncCapture);
+
 
         btnUninit.setEnabled(false);
         btnStartCapture.setEnabled(false);
@@ -108,6 +109,8 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         setupStartCaptureClick();
         setupStopCaptureClick();
         setupSyncCaptureClick();
+        setupMatchFingerClick();
+
     }
 
     private void setupInitClick() {
@@ -554,52 +557,238 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         }
     }
 
+    private byte[] getTemplateFromCapture() {
+        try {
+            int size = lastDeviceInfo.Width * lastDeviceInfo.Height + 1111;
+            byte[] bTemplateData = new byte[size];
+            int[] tSize = new int[1];
+
+
+            int ret = morfinAuth.GetTemplate(bTemplateData, tSize, TemplateFormat.FMR_V2011);
+
+            if (ret == 0) {
+                byte[] template = new byte[tSize[0]];
+                System.arraycopy(bTemplateData, 0, template, 0, tSize[0]);
+                Log.d("Template", "Template size: " + tSize[0] + " bytes");
+                return template;
+            } else {
+                Log.e("Template", "GetTemplate failed: " + ret);
+                return null;
+            }
+        } catch (Exception e) {
+            Log.e("Template", "Error getting template", e);
+            return null;
+        }
+    }
+
+
+
 
 
     private void saveImageToStorage(int fingerNumber, int quality, int nfiq) {
         try {
-
             int size = lastDeviceInfo.Width * lastDeviceInfo.Height + 1111;
             int[] iSize = new int[1];
             byte[] bImage1 = new byte[size];
 
-
             int ret = morfinAuth.GetImage(bImage1, iSize, 1, ImageFormat.BMP);
 
             if (ret == 0) {
-
                 byte[] bImage = new byte[iSize[0]];
                 System.arraycopy(bImage1, 0, bImage, 0, iSize[0]);
 
 
                 String fileName = "finger_" + fingerNumber + ".jpg";
                 String filePath = currentSessionFolder + File.separator + fileName;
-
-
-
                 FileOutputStream fos = new FileOutputStream(filePath);
                 fos.write(bImage);
                 fos.close();
 
-
                 Log.d("ImageCapture", "Saved finger " + fingerNumber +
                         " (Quality:" + quality + ", NFIQ:" + nfiq +
-                        ", Size:" + iSize + " bytes) to " + filePath);
+                        ", Size:" + iSize[0] + " bytes) to " + filePath);
 
+
+                byte[] template = getTemplateFromCapture();
+                if (template != null) {
+                    String userId = dbHelper.saveFingerprint(bImage, template, quality, nfiq);
+                    Log.d("Database", "Saved to DB: " + userId);
+                }
 
                 bImage = null;
 
             } else {
-
                 Log.e("ImageCapture", "GetImage failed with code: " + ret);
             }
 
         } catch (Exception e) {
-
             Log.e("ImageCapture", "Error saving image", e);
             e.printStackTrace();
         }
     }
+
+
+    private void setupMatchFingerClick() {
+
+        Button btnMatchFinger = findViewById(R.id.btnMatchFinger);
+
+
+        btnMatchFinger.setOnClickListener(v -> {
+            if (isStartCaptureRunning || (captureThread != null && captureThread.isAlive())) {
+                txtStatus.setText("Status : Capture already running...");
+                return;
+            }
+
+            if (lastDeviceInfo == null) {
+                txtStatus.setText("Status : Please init device first");
+                return;
+            }
+
+            int totalUsers = dbHelper.getTotalFingerprints();
+            if (totalUsers == 0) {
+                txtStatus.setText("Status : No fingerprints in DB!\nCapture first");
+                return;
+            }
+
+            txtStatus.setText("Status : MATCH MODE\n" + totalUsers + " stored\nPlace your finger");
+            startMatchCapture();
+        });
+    }
+
+    private void startMatchCapture() {
+        if (isStartCaptureRunning || (captureThread != null && captureThread.isAlive())) {
+            txtStatus.setText("Status : Capture already running...");
+            return;
+        }
+
+        isStartCaptureRunning = true;
+
+        captureThread = new Thread(() -> {
+            try {
+                imgFinger.post(() -> {
+                    imgFinger.setImageResource(android.R.color.white);
+                });
+
+                int[] qty = new int[1];
+                int[] nfiq = new int[1];
+
+                int ret = morfinAuth.AutoCapture(minQuality, timeOut, qty, nfiq);
+
+                if (ret != 0) {
+                    imgFinger.post(() -> {
+                        imgFinger.setImageResource(android.R.color.white);
+                    });
+
+                    if (ret == -2057) {
+                        txtStatus.setText("Status : Device not connected");
+                    } else {
+                        txtStatus.setText("Status : Capture failed\n" + morfinAuth.GetErrorMessage(ret));
+                    }
+                    isStartCaptureRunning = false;
+                    return;
+                }
+
+                byte[] capturedTemplate = getTemplateFromCapture();
+
+                if (capturedTemplate == null) {
+                    runOnUiThread(() -> {
+                        txtStatus.setText("Status : Failed to get template");
+                    });
+                    isStartCaptureRunning = false;
+                    return;
+                }
+
+                performMatching(capturedTemplate, qty[0]);
+                isStartCaptureRunning = false;
+
+            } catch (Exception e) {
+                Log.e("Match", "Error", e);
+                runOnUiThread(() -> {
+                    txtStatus.setText("Status : Error\n" + e.getMessage());
+                });
+                isStartCaptureRunning = false;
+            } finally {
+                captureThread = null;
+            }
+        });
+
+        captureThread.start();
+    }
+
+
+    private void performMatching(byte[] capturedTemplate, int quality) {
+        new Thread(() -> {
+            try {
+                Cursor cursor = dbHelper.getAllFingerprints();
+
+                if (cursor == null || cursor.getCount() == 0) {
+                    runOnUiThread(() -> {
+                        txtStatus.setText("Status : Database empty");
+                    });
+                    return;
+                }
+
+
+                final boolean[] isMatchArray = {false};
+                final String[] matchedUserIdArray = {""};
+                final int[] matchScoreArray = {0};
+                final int[] fingersCheckedArray = {0};
+
+                int userIdIdx = cursor.getColumnIndex(FingerprintDatabaseHelper.COL_USER_ID);
+                int templateIdx = cursor.getColumnIndex(FingerprintDatabaseHelper.COL_TEMPLATE);
+
+                while (cursor.moveToNext()) {
+                    if (userIdIdx >= 0 && templateIdx >= 0) {
+                        String userId = cursor.getString(userIdIdx);
+                        byte[] storedTemplate = cursor.getBlob(templateIdx);
+
+                        int[] score = new int[1];
+
+
+                        int ret = morfinAuth.MatchTemplate(
+                                capturedTemplate,
+                                storedTemplate,
+                                score,
+                                TemplateFormat.FMR_V2011
+                        );
+
+                        fingersCheckedArray[0]++;
+                        Log.d("Match", userId + ": Score=" + score[0] + ", Ret=" + ret);
+
+                        if (ret == 0 && score[0] >= 60) {
+                            isMatchArray[0] = true;
+                            matchedUserIdArray[0] = userId;
+                            matchScoreArray[0] = score[0];
+                            break;
+                        }
+                    }
+                }
+                cursor.close();
+
+
+                runOnUiThread(() -> {
+                    if (isMatchArray[0]) {
+                        txtStatus.setText(String.format(
+                                "Status : MATCH FOUND!\nUser: %s\nScore: %d \nQuality: %d",
+                                matchedUserIdArray[0], matchScoreArray[0], quality));
+                    } else {
+                        txtStatus.setText(String.format(
+                                "Status : NO MATCH\nChecked: %d\nQuality: %d",
+                                fingersCheckedArray[0], quality));
+                    }
+                });
+
+            } catch (Exception e) {
+                Log.e("Match", "Error", e);
+                runOnUiThread(() -> {
+                    txtStatus.setText("Status : Match error\n" + e.getMessage());
+                });
+            }
+        }).start();
+    }
+
+
+
 
 
     private void setDeviceInfo(DeviceInfo info) {

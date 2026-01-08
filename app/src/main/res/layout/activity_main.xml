@@ -104,6 +104,20 @@
         app:layout_constraintStart_toEndOf="@id/btnStartCapture"
         app:layout_constraintTop_toBottomOf="@id/btnUninit" />
 
+
+    <Button
+        android:id="@+id/btnMatchFinger"
+        android:layout_width="289dp"
+        android:layout_height="48dp"
+        android:backgroundTint="#2196F3"
+        android:text="Match Fingerprint"
+        android:textSize="16sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btnSyncCapture"
+        app:layout_constraintVertical_bias="0.214" />
+
     <Button
         android:id="@+id/btnSyncCapture"
         android:layout_width="289dp"
@@ -114,6 +128,6 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/btnStartCapture"
-        app:layout_constraintVertical_bias="0.09" />
+        app:layout_constraintVertical_bias="0.131" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
