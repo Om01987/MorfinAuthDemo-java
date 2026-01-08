@@ -45,6 +45,9 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
     private Thread captureThread;
     private ImageView imgFinger;
 
+    private android.widget.EditText edtUserId;
+    private Button btnVerifyUser;
+
     private String clientKey = "";
     private int minQuality = 60;
     private int timeOut = 10000;
@@ -84,6 +87,9 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         imgFinger = findViewById(R.id.imgFinger);
         btnSyncCapture = findViewById(R.id.btnSyncCapture);
 
+        edtUserId = findViewById(R.id.edtUserId);
+        btnVerifyUser = findViewById(R.id.btnVerifyUser);
+
 
         btnUninit.setEnabled(false);
         btnStartCapture.setEnabled(false);
@@ -111,6 +117,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         setupStopCaptureClick();
         setupSyncCaptureClick();
         setupMatchFingerClick();
+        setupVerifyUserClick();
 
     }
 
@@ -1036,6 +1043,118 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         }
 
         Log.d("CaptureSession", "Finished. Saved " + captureCount + " images to " + currentSessionFolder);
+    }
+
+    private void setupVerifyUserClick() {
+        btnVerifyUser.setOnClickListener(v -> {
+            String userId = edtUserId.getText().toString().trim();
+
+            if (userId.isEmpty()) {
+                txtStatus.setText("Status : Please enter a User ID");
+                return;
+            }
+
+            if (isStartCaptureRunning || (captureThread != null && captureThread.isAlive())) {
+                txtStatus.setText("Status : Capture already running...");
+                return;
+            }
+
+            if (lastDeviceInfo == null) {
+                txtStatus.setText("Status : Please init device first");
+                return;
+            }
+
+            txtStatus.setText("Status : VERIFYING " + userId + "\nPlace finger on sensor");
+            startVerificationCapture(userId);
+        });
+    }
+
+    private void startVerificationCapture(String targetUserId) {
+        isStartCaptureRunning = true;
+
+        captureThread = new Thread(() -> {
+            try {
+
+                runOnUiThread(() -> imgFinger.setImageResource(android.R.color.white));
+
+                int[] qty = new int[1];
+                int[] nfiq = new int[1];
+
+
+                int ret = morfinAuth.AutoCapture(minQuality, timeOut, qty, nfiq);
+
+                if (ret != 0) {
+                    runOnUiThread(() -> {
+                        if (ret == -2057) {
+                            txtStatus.setText("Status : Device not connected");
+                        } else {
+                            txtStatus.setText("Status : Capture failed (" + ret + ")\n" + morfinAuth.GetErrorMessage(ret));
+                        }
+                    });
+                    isStartCaptureRunning = false;
+                    return;
+                }
+
+
+                byte[] capturedTemplate = getTemplateFromCapture();
+
+                if (capturedTemplate == null) {
+                    runOnUiThread(() -> txtStatus.setText("Status : Failed to generate template"));
+                    isStartCaptureRunning = false;
+                    return;
+                }
+
+
+                verifyUserInDb(targetUserId, capturedTemplate, qty[0]);
+                isStartCaptureRunning = false;
+
+            } catch (Exception e) {
+                Log.e("Verify", "Error", e);
+                runOnUiThread(() -> txtStatus.setText("Status : Error\n" + e.getMessage()));
+                isStartCaptureRunning = false;
+            } finally {
+                captureThread = null;
+            }
+        });
+
+        captureThread.start();
+    }
+
+    private void verifyUserInDb(String targetUserId, byte[] capturedTemplate, int captureQuality) {
+
+        byte[] storedTemplate = dbHelper.getTemplateByUserId(targetUserId);
+
+        runOnUiThread(() -> {
+            if (storedTemplate == null) {
+                txtStatus.setText("Status : User ID '" + targetUserId + "' not found in database.");
+            } else {
+                int[] score = new int[1];
+
+                int ret = morfinAuth.MatchTemplate(
+                        capturedTemplate,
+                        storedTemplate,
+                        score,
+                        TemplateFormat.FMR_V2011
+                );
+
+                if (ret == 0) {
+                    if (score[0] >= 400) {
+                        txtStatus.setText(String.format(
+                                "Status : VERIFICATION SUCCESS\nUser: %s\nScore: %d\nQuality: %d",
+                                targetUserId, score[0], captureQuality));
+
+
+                        edtUserId.setText("");
+                    } else {
+                        txtStatus.setText(String.format(
+                                "Status : FINGERPRINT MISMATCH\nUser: %s\nScore: %d (Low)\nQuality: %d",
+                                targetUserId, score[0], captureQuality));
+                    }
+                } else {
+                    txtStatus.setText("Status : Match Error (" + ret + ")");
+                }
+            }
+        });
     }
 
     @Override

@@ -115,8 +115,33 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btnSyncCapture"
-        app:layout_constraintVertical_bias="0.214" />
+        app:layout_constraintTop_toBottomOf="@+id/edtUserId"
+        app:layout_constraintVertical_bias="0.613" />
+
+    <EditText
+        android:id="@+id/edtUserId"
+        android:layout_width="208dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="28dp"
+        android:hint="User ID (USER_001)"
+        android:inputType="textCapCharacters"
+        android:minHeight="48dp"
+        app:layout_constraintEnd_toStartOf="@+id/btnVerifyUser"
+        app:layout_constraintHorizontal_bias="0.581"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btnSyncCapture" />
+
+    <Button
+        android:id="@+id/btnVerifyUser"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="60dp"
+        android:backgroundTint="#673AB7"
+        android:text="Match"
+        app:layout_constraintBottom_toBottomOf="@+id/edtUserId"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/edtUserId"
+        app:layout_constraintVertical_bias="0.0" />
 
     <Button
         android:id="@+id/btnSyncCapture"
