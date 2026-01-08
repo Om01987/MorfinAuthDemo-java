@@ -12,7 +12,6 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
-
 import com.mantra.morfinauth.MorfinAuth;
 import com.mantra.morfinauth.DeviceInfo;
 import com.mantra.morfinauth.MorfinAuth_Callback;
@@ -21,11 +20,8 @@ import com.mantra.morfinauth.enums.DeviceModel;
 import com.mantra.morfinauth.enums.ImageFormat;
 import com.mantra.morfinauth.enums.LogLevel;
 
-
 import java.io.File;
 import java.io.FileOutputStream;
-import java.util.ArrayList;
-import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements MorfinAuth_Callback {
 
@@ -42,11 +38,9 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
     private Button btnInit, btnUninit, btnStartCapture, btnStopCapture, btnSyncCapture;
 
     private Thread captureThread;
-
     private ImageView imgFinger;
 
     private String clientKey = "";
-
     private int minQuality = 60;
     private int timeOut = 10000;
 
@@ -54,24 +48,16 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
     private static final int MAX_FINGERS = 10;
 
     private boolean stopCaptureRequested = false;
-
     private boolean isAutoCaptureMode = false;
 
-    private List<byte[]> capturedImages;
 
-
-
-
+    private String currentSessionFolder;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
-
-
-        capturedImages = new ArrayList<>();
-
 
         txtStatus = findViewById(R.id.txtStatus);
         btnInit = findViewById(R.id.btnInit);
@@ -104,14 +90,12 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         setupSyncCaptureClick();
     }
 
-
     private void setupInitClick() {
         btnInit.setOnClickListener(v -> {
             if (isInitRunning) {
                 txtStatus.setText("Status : Init already running...");
                 return;
             }
-
 
             if (connectedDeviceModel == null) {
                 txtStatus.setText("Status : No supported device detected\nConnect MFS500, MARC10, or MELO31");
@@ -126,7 +110,6 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                     isInitRunning = true;
                     DeviceInfo info = new DeviceInfo();
                     String key = (clientKey == null || clientKey.isEmpty()) ? null : clientKey;
-
 
                     int ret = morfinAuth.Init(connectedDeviceModel, key, info);
 
@@ -228,10 +211,15 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             }
 
 
+            currentSessionFolder = createSessionFolder();
+            if (currentSessionFolder == null) {
+                txtStatus.setText("Status : Failed to create storage folder");
+                return;
+            }
+
             captureCount = 0;
             stopCaptureRequested = false;
             isAutoCaptureMode = false;
-            capturedImages.clear();
 
             imgFinger.setImageResource(android.R.color.white);
             txtStatus.setText("Status : FINGER 1/10\nPlace your finger on sensor");
@@ -262,7 +250,6 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         });
     }
 
-
     private void setupStopCaptureClick() {
         btnStopCapture.setOnClickListener(v -> {
             if (isStopCaptureRunning) {
@@ -273,13 +260,9 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             stopCaptureRequested = true;
 
             if (isAutoCaptureMode) {
-
                 txtStatus.setText("Status : Stopping AutoCapture...");
                 btnStopCapture.setEnabled(false);
-
-
             } else {
-
                 txtStatus.setText("Status : Stopping capture...");
                 btnStopCapture.setEnabled(false);
                 isStopCaptureRunning = true;
@@ -319,11 +302,8 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         });
     }
 
-
-
     private void setupSyncCaptureClick() {
         btnSyncCapture.setOnClickListener(v -> {
-
 
             if (isStartCaptureRunning || (captureThread != null && captureThread.isAlive())) {
                 txtStatus.setText("Status : capture already running...");
@@ -335,19 +315,23 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                 return;
             }
 
+
+            currentSessionFolder = createSessionFolder();
+            if (currentSessionFolder == null) {
+                txtStatus.setText("Status : Failed to create storage folder");
+                return;
+            }
+
             captureCount = 0;
             stopCaptureRequested = false;
             isAutoCaptureMode = true;
-            capturedImages.clear();
 
             imgFinger.setImageResource(android.R.color.white);
             txtStatus.setText("Status : Starting AutoCapture...\nPlace your finger on sensor");
             btnSyncCapture.setEnabled(false);
             btnStartCapture.setEnabled(false);
-
             btnStopCapture.setEnabled(true);
             isStartCaptureRunning = true;
-
 
             captureThread = new Thread(() -> {
                 try {
@@ -356,20 +340,19 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                         int[] qty = new int[1];
                         int[] nfiq = new int[1];
 
-
                         int ret = morfinAuth.AutoCapture(minQuality, timeOut, qty, nfiq);
 
-                        runOnUiThread(() -> {
-                            if (ret == 0) {
-                                captureCount++;
-                                getAndStoreImageData(captureCount, qty[0]);
+                        if (ret == 0) {
+                            captureCount++;
+
+                            saveImageToStorage(captureCount, qty[0], nfiq[0]);
 
 
-
+                            runOnUiThread(() -> {
                                 if (captureCount < MAX_FINGERS) {
                                     txtStatus.setText(
                                             String.format(
-                                                    "Status : FINGER %d/10 SUCCESS\nQuality: %d\nNFIQ: %d\n\nPlace next finger...",
+                                                    "Status : FINGER %d/10 SAVED\nQuality: %d\nNFIQ: %d\n\nPlace next finger...",
                                                     captureCount,
                                                     qty[0],
                                                     nfiq[0]
@@ -378,28 +361,32 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                                 } else {
                                     txtStatus.setText(
                                             String.format(
-                                                    "Status : FINGER %d/10 SUCCESS\nQuality: %d\nNFIQ: %d\n\n All 10 fingers captured!",
+                                                    "Status : FINGER %d/10 SAVED\nQuality: %d\nNFIQ: %d\n\nAll 10 fingers captured!",
                                                     captureCount,
                                                     qty[0],
                                                     nfiq[0]
                                             )
                                     );
                                 }
-                            } else if (ret == -2019) {
-                                if (!stopCaptureRequested && captureCount < MAX_FINGERS) {
+                            });
+                        } else if (ret == -2019) {
+                            if (!stopCaptureRequested && captureCount < MAX_FINGERS) {
+                                runOnUiThread(() -> {
                                     txtStatus.setText(
                                             String.format(
                                                     "Status : Timeout\nRetrying FINGER %d/10\nPlace your finger...",
                                                     captureCount + 1
                                             )
                                     );
-                                }
-
-                            } else if (ret == -2057) {
+                                });
+                            }
+                        } else if (ret == -2057) {
+                            runOnUiThread(() -> {
                                 txtStatus.setText("Status : Device not connected");
-                                finishAutoCaptureSession();
-                            } else {
-
+                            });
+                            finishAutoCaptureSession();
+                        } else {
+                            runOnUiThread(() -> {
                                 txtStatus.setText(
                                         String.format(
                                                 "Status : AUTOCAPTURE FAILED (%d)\n%s\nCaptured %d/10 fingers",
@@ -408,9 +395,9 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                                                 captureCount
                                         )
                                 );
-                                finishAutoCaptureSession();
-                            }
-                        });
+                            });
+                            finishAutoCaptureSession();
+                        }
 
                         if (ret == -2019) {
                             continue;
@@ -428,13 +415,13 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                     runOnUiThread(() -> {
                         if (stopCaptureRequested) {
                             String message = String.format(
-                                    "Status : Manually stopped\nCaptured %d/10 fingers",
+                                    "Status : Manually stopped\nSaved %d/10 fingers",
                                     captureCount
                             );
                             finishAutoCaptureSession(message);
                         } else if (captureCount >= MAX_FINGERS) {
                             finishAutoCaptureSession(
-                                    "Status : AUTOCAPTURE COMPLETE\nCaptured 10/10 fingers"
+                                    "Status : AUTOCAPTURE COMPLETE\nSaved 10/10 fingers"
                             );
                         } else {
                             finishAutoCaptureSession();
@@ -473,18 +460,113 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             txtStatus.setText(customMessage);
         } else {
             String finalMessage = String.format(
-                    "Status : AutoCapture Complete\nTotal fingers: %d/10",
-                    captureCount
+                    "Status : AutoCapture Complete\n" +
+                            "✓ Saved %d/10 images\n" +
+                            "Location:\n%s",
+                    captureCount,
+                    currentSessionFolder
             );
             txtStatus.setText(finalMessage);
         }
 
-        if (captureCount > 0) {
-            showSaveDialog();
+        Log.d("AutoCaptureSession", "Finished. Saved " + captureCount + " images to " + currentSessionFolder);
+    }
+
+    private String createSessionFolder() {
+        try {
+
+            String timestamp = new java.text.SimpleDateFormat(
+                    "yyyyMMdd_HHmmss",
+                    java.util.Locale.US
+            ).format(new java.util.Date());
+
+
+            File storageDir;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+
+                File[] dirs = getExternalMediaDirs();
+
+
+
+                storageDir = (dirs != null && dirs.length > 0) ? dirs[0] : null;
+
+
+                if (storageDir == null) {
+                    storageDir = getExternalFilesDir(null);
+                }
+            } else {
+
+                storageDir = getExternalFilesDir(null);
+            }
+
+
+            String folderPath = storageDir.getAbsolutePath() +
+                    File.separator + "FingerData" +
+                    File.separator + timestamp;
+
+
+            File folder = new File(folderPath);
+            if (!folder.exists()) {
+                folder.mkdirs();
+            }
+
+            Log.d("SessionFolder", "Created session folder: " + folderPath);
+
+            return folderPath;
+
+        } catch (Exception e) {
+
+            Log.e("SessionFolder", "Failed to create folder", e);
+            e.printStackTrace();
+            return null;
         }
+    }
 
 
-        Log.d("AutoCaptureSession", "Finished. Captured " + captureCount + " fingers");
+
+    private void saveImageToStorage(int fingerNumber, int quality, int nfiq) {
+        try {
+
+            int size = lastDeviceInfo.Width * lastDeviceInfo.Height + 1111;
+            int[] iSize = new int[1];
+            byte[] bImage1 = new byte[size];
+
+
+            int ret = morfinAuth.GetImage(bImage1, iSize, 1, ImageFormat.BMP);
+
+            if (ret == 0) {
+
+                byte[] bImage = new byte[iSize[0]];
+                System.arraycopy(bImage1, 0, bImage, 0, iSize[0]);
+
+
+                String fileName = "finger_" + fingerNumber + ".jpg";
+                String filePath = currentSessionFolder + File.separator + fileName;
+
+
+
+                FileOutputStream fos = new FileOutputStream(filePath);
+                fos.write(bImage);
+                fos.close();
+
+
+                Log.d("ImageCapture", "Saved finger " + fingerNumber +
+                        " (Quality:" + quality + ", NFIQ:" + nfiq +
+                        ", Size:" + iSize + " bytes) to " + filePath);
+
+
+                bImage = null;
+
+            } else {
+
+                Log.e("ImageCapture", "GetImage failed with code: " + ret);
+            }
+
+        } catch (Exception e) {
+
+            Log.e("ImageCapture", "Error saving image", e);
+            e.printStackTrace();
+        }
     }
 
 
@@ -510,13 +592,11 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         });
     }
 
-
     private void setClearDeviceInfo() {
         runOnUiThread(() -> {
             txtStatus.setText(R.string.status_disconnected);
         });
     }
-
 
     @Override
     public void OnDeviceDetection(String deviceName, DeviceDetection detection) {
@@ -601,20 +681,17 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         }
     }
 
-
-
     @Override
     public void OnComplete(int errorCode, int Quality, int NFIQ) {
         try {
             if (errorCode == 0) {
 
                 captureCount++;
-
-                getAndStoreImageData(captureCount, Quality);
+                saveImageToStorage(captureCount, Quality, NFIQ);
 
                 runOnUiThread(() -> {
                     String status = String.format(
-                            "Status : FINGER %d/10 SUCCESS\nQuality: %d\nNFIQ: %d",
+                            "Status : FINGER %d/10 SAVED\nQuality: %d\nNFIQ: %d",
                             captureCount,
                             Quality,
                             NFIQ
@@ -680,12 +757,10 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         }
     }
 
-
     private void restartCaptureForNextFinger() {
         try {
 
             imgFinger.setImageResource(android.R.color.white);
-
 
             txtStatus.setText(
                     String.format(
@@ -716,7 +791,6 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         }
     }
 
-
     private void finishCaptureSession() {
         finishCaptureSession(null);
     }
@@ -732,156 +806,17 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             txtStatus.setText(customMessage);
         } else {
             String finalMessage = String.format(
-                    "Status : Capture Complete\nTotal fingers: %d/10",
-                    captureCount
+                    "Status : Capture Complete\n" +
+                            " Saved %d/10 images\n" +
+                            "Location:\n%s",
+                    captureCount,
+                    currentSessionFolder
             );
             txtStatus.setText(finalMessage);
         }
 
-        if (captureCount > 0) {
-            showSaveDialog();
-        }
-
-        Log.d("CaptureSession", "Finished. Captured " + captureCount + " fingers");
+        Log.d("CaptureSession", "Finished. Saved " + captureCount + " images to " + currentSessionFolder);
     }
-
-    private void showSaveDialog() {
-
-        androidx.appcompat.app.AlertDialog.Builder builder =
-                new androidx.appcompat.app.AlertDialog.Builder(MainActivity.this);
-
-
-        builder.setTitle("Save Images?")
-                .setMessage("Save " + captureCount + " fingerprint images?")
-
-
-                .setPositiveButton("SAVE", (dialog, id) -> {
-                    saveImagesToStorage();
-                })
-
-
-                .setNegativeButton("DISCARD", (dialog, id) -> {
-                    capturedImages.clear();
-                    txtStatus.setText("Status : Images discarded");
-                })
-
-                .setCancelable(false)
-                .show();
-    }
-
-
-    private void getAndStoreImageData(int fingerNumber, int quality) {
-
-
-        int size = lastDeviceInfo.Width * lastDeviceInfo.Height + 1111;
-        int[] iSize = new int[1];
-        byte[] bImage1 = new byte[size];
-
-
-        int ret = morfinAuth.GetImage(bImage1, iSize, 1, ImageFormat.BMP);
-
-
-        if (ret == 0) {
-
-            byte[] bImage = new byte[iSize[0]];
-
-
-            System.arraycopy(bImage1, 0, bImage, 0, iSize[0]);
-
-
-            capturedImages.add(bImage);
-
-            Log.d("ImageCapture", "Stored finger " + fingerNumber + " - " + iSize[0] + " bytes");
-        } else {
-            Log.e("ImageCapture", "GetImage failed: " + ret);
-        }
-    }
-
-
-    private void saveImagesToStorage() {
-
-
-        if (capturedImages.isEmpty()) {
-            txtStatus.setText("Status : No images to save");
-            return;
-        }
-
-
-        new Thread(() -> {
-            try {
-
-                String timestamp = new java.text.SimpleDateFormat(
-                        "yyyyMMdd_HHmmss",
-                        java.util.Locale.US
-                ).format(new java.util.Date());
-
-
-
-                File storageDir = getExternalMediaDirs()[0];
-                if (storageDir == null) {
-                    storageDir = getExternalFilesDir(null);
-                }
-
-
-                String folderPath = storageDir.getAbsolutePath() +
-                        File.separator + "FingerData" +
-                        File.separator + timestamp;
-
-
-                File folder = new File(folderPath);
-                if (!folder.exists()) {
-                    folder.mkdirs();
-                }
-
-
-                int savedCount = 0;
-                for (int i = 0; i < capturedImages.size(); i++) {
-                    byte[] imageData = capturedImages.get(i);
-
-
-                    if (imageData != null && imageData.length > 0) {
-
-
-                        String fileName = "finger_" + (i + 1) + ".jpg";
-
-
-                        String filePath = folderPath + File.separator + fileName;
-
-                        FileOutputStream fos = new FileOutputStream(filePath);
-                        fos.write(imageData);
-                        fos.close();
-
-                        savedCount++;
-                    }
-                }
-
-
-                String message = String.format(
-                        "Status : SAVED ✓\nImages: %d\nLocation:\n%s",
-                        savedCount,
-                        folderPath
-                );
-
-
-                runOnUiThread(() -> {
-                    txtStatus.setText(message);
-                });
-
-                Log.i("SaveSession", "Saved " + savedCount + " images");
-
-            } catch (Exception e) {
-                Log.e("SaveSession", "Error", e);
-                runOnUiThread(() -> {
-                    txtStatus.setText("Status : Save failed");
-                });
-            } finally {
-
-                capturedImages.clear();
-            }
-        }).start();
-    }
-
-
 
     @Override
     public void OnFingerPosition(int errorCode, int position) {
@@ -901,7 +836,6 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
         }
         super.onStop();
     }
-
 
     @Override
     public void onBackPressed() {
@@ -930,7 +864,6 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
             }
         }
     }
-
 
     @Override
     protected void onDestroy() {
