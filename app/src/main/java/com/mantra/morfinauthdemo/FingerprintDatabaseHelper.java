@@ -108,49 +108,6 @@ public class FingerprintDatabaseHelper extends SQLiteOpenHelper {
     }
 
 
-    public byte[] getTemplate(String userId) {
-        try {
-            SQLiteDatabase db = this.getReadableDatabase();
-            Cursor cursor = db.query(TABLE_FINGERPRINTS,
-                    new String[]{COL_TEMPLATE},
-                    COL_USER_ID + " = ?",
-                    new String[]{userId},
-                    null, null, null);
-
-            byte[] template = null;
-            if (cursor.moveToFirst()) {
-                template = cursor.getBlob(0);
-            }
-            cursor.close();
-            db.close();
-            return template;
-        } catch (Exception e) {
-            Log.e("DB", "Error getting template", e);
-            return null;
-        }
-    }
-
-
-    public boolean userExists(String userId) {
-        try {
-            SQLiteDatabase db = this.getReadableDatabase();
-            Cursor cursor = db.query(TABLE_FINGERPRINTS,
-                    null,
-                    COL_USER_ID + " = ?",
-                    new String[]{userId},
-                    null, null, null);
-
-            boolean exists = cursor.getCount() > 0;
-            cursor.close();
-            db.close();
-            return exists;
-        } catch (Exception e) {
-            Log.e("DB", "Error checking user", e);
-            return false;
-        }
-    }
-
-
     public int getTotalFingerprints() {
         try {
             SQLiteDatabase db = this.getReadableDatabase();

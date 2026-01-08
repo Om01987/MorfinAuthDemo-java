@@ -22,6 +22,7 @@ import com.mantra.morfinauth.enums.ImageFormat;
 import com.mantra.morfinauth.enums.LogLevel;
 import com.mantra.morfinauth.enums.TemplateFormat;
 
+
 import java.io.File;
 import java.io.FileOutputStream;
 
@@ -755,7 +756,7 @@ public class MainActivity extends AppCompatActivity implements MorfinAuth_Callba
                         fingersCheckedArray[0]++;
                         Log.d("Match", userId + ": Score=" + score[0] + ", Ret=" + ret);
 
-                        if (ret == 0 && score[0] >= 60) {
+                        if (ret == 0 && score[0] >= 600) {
                             isMatchArray[0] = true;
                             matchedUserIdArray[0] = userId;
                             matchScoreArray[0] = score[0];
