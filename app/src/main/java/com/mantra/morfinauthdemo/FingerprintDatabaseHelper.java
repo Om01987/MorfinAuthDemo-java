@@ -124,6 +124,7 @@ public class FingerprintDatabaseHelper extends SQLiteOpenHelper {
     }
 
 
+
     public boolean deleteAll() {
         try {
             SQLiteDatabase db = this.getWritableDatabase();
